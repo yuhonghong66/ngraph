@@ -86,6 +86,8 @@ add_library(onnx_import STATIC
         op/log_softmax.hpp
         op/lrn.cpp
         op/lrn.hpp
+        op/lstm.cpp
+        op/lstm.hpp
         op/matmul.cpp
         op/matmul.hpp
         op/max_pool.cpp
@@ -140,6 +142,8 @@ add_library(onnx_import STATIC
         op/xor.hpp
         ops_bridge.cpp
         ops_bridge.hpp
+        utils/arithmetic_operators.cpp
+        utils/arithmetic_operators.hpp
         utils/broadcasting.cpp
         utils/broadcasting.hpp
         utils/common.hpp
