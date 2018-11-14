@@ -4893,8 +4893,20 @@ NGRAPH_TEST(${BACKEND_NAME}, generate_mask)
     ASSERT_FALSE(std::any_of(result2_2.begin(), result2_2.end(), is_not_zero_or_one));
 }
 
-NGRAPH_TEST(${BACKEND_NAME}, quantize)
+template <class REAL, class QUANT>
+bool test_quantize(const Shape& input_shape,
+                   const Shape& scale_offset_shape,
+                   const element::Type& input_type,
+                   const element::Type& output_type,
+                   const AxisSet& quantization_axes,
+                   const op::Quantize::RoundMode& round_mode,
+                   const std::vector<REAL>& input_values,
+                   const std::vector<REAL>& scale_values,
+                   const std::vector<QUANT>& offset_values,
+                   const std::vector<QUANT>& expected_values,
+                   const std::string& backend_name)
 {
+<<<<<<< Updated upstream
     Shape input_shape{4, 3};
     Shape scale_offset_shape;
     AxisSet quantization_axes;
@@ -4907,17 +4919,20 @@ NGRAPH_TEST(${BACKEND_NAME}, quantize)
 
     op::Quantize::RoundMode round_mode = op::Quantize::RoundMode::ROUND_NEAREST_TOWARD_INFINITY;
 
+=======
+>>>>>>> Stashed changes
     auto X = make_shared<op::Parameter>(input_type, input_shape);
-    auto scale = op::Constant::create(input_type, scale_offset_shape, {2});
-    auto offset = op::Constant::create(output_type, scale_offset_shape, {1});
+    auto scale = op::Constant::create(input_type, scale_offset_shape, scale_values);
+    auto offset = op::Constant::create(output_type, scale_offset_shape, offset_values);
     auto quantize =
         make_shared<op::Quantize>(X, scale, offset, output_type, quantization_axes, round_mode);
     auto f = make_shared<Function>(quantize, op::ParameterVector{X});
 
-    auto backend = runtime::Backend::create("${BACKEND_NAME}");
+    auto backend = runtime::Backend::create(backend_name);
     auto x = backend->create_tensor(input_type, input_shape);
     auto y = backend->create_tensor(output_type, input_shape);
 
+<<<<<<< Updated upstream
     copy_data(x, vector<input_c_type>{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11});
     // divide by scale                2  2  2  2  2  2  2  2  2  2  2   2
     // equals (rounded)               0  1  1  2  2  3  3  4  4  5  5   6
@@ -4927,30 +4942,68 @@ NGRAPH_TEST(${BACKEND_NAME}, quantize)
     backend->call_with_validate(f, {y}, {x});
     EXPECT_EQ((vector<output_c_type>{1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7}),
               read_vector<output_c_type>(y));
+=======
+    copy_data(x, input_values);
+    backend->call_with_validate(f, {y}, {x});
+
+    EXPECT_EQ(expected_values, read_vector<QUANT>(y));
+>>>>>>> Stashed changes
 }
 
-NGRAPH_TEST(${BACKEND_NAME}, dequantize)
+#define QIN                                                                                        \
+    {                                                                                              \
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11                                                       \
+    }
+#define QOUT                                                                                       \
+    {                                                                                              \
+        1, 1, 2, 3, 3, 3, 4, 5, 5, 5, 6, 7                                                         \
+    }
+NGRAPH_TEST(${BACKEND_NAME}, quantize)
 {
-    Shape input_shape{4, 3};
-    Shape scale_offset_shape;
-    AxisSet quantization_axes;
+    using namespace element;
+    Shape s4x3{4, 3};
+    op::Quantize::RoundMode rm = op::Quantize::RoundMode::ROUND_NEAREST_TOWARD_EVEN;
 
-    auto input_type = element::u8;
-    auto output_type = element::f32;
+    std::string be = "${BACKEND_NAME}";
 
-    typedef uint8_t input_c_type;
-    typedef float output_c_type;
+    // input            0  1  2  3  4  5  6  7  8  9 10 11
+    // divide by scale  2  2  2  2  2  2  2  2  2  2  2  2
+    // equals (rounded) 0  0  1  2  2  2  3  4  4  4  5  6
+    // plus offset      1  1  1  1  1  1  1  1  1  1  1  1
+    // output           1  1  2  3  3  3  4  5  5  5  6  7
 
+    test_quantize<float, uint8_t>(s4x3, Shape{}, f32, u8, AxisSet{}, rm, QIN, {2}, {1}, QOUT, be);
+    test_quantize<float, int8_t>(s4x3, Shape{}, f32, i8, AxisSet{}, rm, QIN, {2}, {1}, QOUT, be);
+    test_quantize<float, int32_t>(s4x3, Shape{}, f32, i32, AxisSet{}, rm, QIN, {2}, {1}, QOUT, be);
+
+    test_quantize<double, uint8_t>(s4x3, Shape{}, f64, u8, AxisSet{}, rm, QIN, {2}, {1}, QOUT, be);
+    test_quantize<double, int8_t>(s4x3, Shape{}, f64, i8, AxisSet{}, rm, QIN, {2}, {1}, QOUT, be);
+    test_quantize<double, int32_t>(s4x3, Shape{}, f64, i32, AxisSet{}, rm, QIN, {2}, {1}, QOUT, be);
+}
+
+template <class QUANT, class REAL>
+bool test_dequantize(const Shape& input_shape,
+                     const Shape& scale_offset_shape,
+                     const element::Type& input_type,
+                     const element::Type& output_type,
+                     const AxisSet& quantization_axes,
+                     const std::vector<QUANT>& input_values,
+                     const std::vector<REAL>& scale_values,
+                     const std::vector<QUANT>& offset_values,
+                     const std::vector<REAL>& expected_values,
+                     const std::string& backend_name)
+{
     auto X = make_shared<op::Parameter>(input_type, input_shape);
-    auto scale = op::Constant::create(output_type, scale_offset_shape, {2});
-    auto offset = op::Constant::create(input_type, scale_offset_shape, {1});
+    auto scale = op::Constant::create(output_type, scale_offset_shape, scale_values);
+    auto offset = op::Constant::create(input_type, scale_offset_shape, offset_values);
     auto dequantize = make_shared<op::Dequantize>(X, scale, offset, output_type, quantization_axes);
     auto f = make_shared<Function>(dequantize, op::ParameterVector{X});
 
-    auto backend = runtime::Backend::create("${BACKEND_NAME}");
+    auto backend = runtime::Backend::create(backend_name);
     auto x = backend->create_tensor(input_type, input_shape);
     auto y = backend->create_tensor(output_type, input_shape);
 
+<<<<<<< Updated upstream
     copy_data(x, vector<input_c_type>{1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7});
     // minus offset                   1  1  1  1  1  1  1  1  1  1  1  1
     // eqauls                         0  1  1  2  2  3  3  4  4  5  5  6
@@ -4960,14 +5013,186 @@ NGRAPH_TEST(${BACKEND_NAME}, dequantize)
     backend->call_with_validate(f, {y}, {x});
     EXPECT_EQ((vector<output_c_type>{0, 2, 2, 4, 4, 6, 6, 8, 8, 10, 10, 12}),
               read_vector<output_c_type>(y));
+=======
+    copy_data(x, input_values);
+    backend->call_with_validate(f, {y}, {x});
+
+    EXPECT_EQ(expected_values, read_vector<REAL>(y));
+}
+
+NGRAPH_TEST(${BACKEND_NAME}, dequantize)
+{
+    Shape s4x3{4, 3};
+    Shape scale_offset_shape;
+    AxisSet quantization_axes;
+
+    // input               1  1  2  3  3  3  4  5  5  5  6  7
+    // minus offset        1  1  1  1  1  1  1  1  1  1  1  1
+    // eqauls              0  0  1  2  2  2  3  4  4  4  5  6
+    // multiplied by scale 2  2  2  2  2  2  2  2  2  2  2  2
+    // equals              0  0  2  4  4  4  6  8  8  8 10 12
+
+    test_dequantize<uint8_t, float>(s4x3,
+                                    scale_offset_shape,
+                                    element::u8,
+                                    element::f32,
+                                    quantization_axes,
+                                    {1, 1, 2, 3, 3, 3, 4, 5, 5, 5, 6, 7},
+                                    {2},
+                                    {1},
+                                    {0, 0, 2, 4, 4, 4, 6, 8, 8, 8, 10, 12},
+                                    "${BACKEND_NAME}");
+
+    test_dequantize<uint8_t, double>(s4x3,
+                                     scale_offset_shape,
+                                     element::u8,
+                                     element::f64,
+                                     quantization_axes,
+                                     {1, 1, 2, 3, 3, 3, 4, 5, 5, 5, 6, 7},
+                                     {2},
+                                     {1},
+                                     {0, 0, 2, 4, 4, 4, 6, 8, 8, 8, 10, 12},
+                                     "${BACKEND_NAME}");
+
+    test_dequantize<int8_t, float>(s4x3,
+                                   scale_offset_shape,
+                                   element::i8,
+                                   element::f32,
+                                   quantization_axes,
+                                   {1, 1, 2, 3, 3, 3, 4, 5, 5, 5, 6, 7},
+                                   {2},
+                                   {1},
+                                   {0, 0, 2, 4, 4, 4, 6, 8, 8, 8, 10, 12},
+                                   "${BACKEND_NAME}");
+
+    test_dequantize<int8_t, double>(s4x3,
+                                    scale_offset_shape,
+                                    element::i8,
+                                    element::f64,
+                                    quantization_axes,
+                                    {1, 1, 2, 3, 3, 3, 4, 5, 5, 5, 6, 7},
+                                    {2},
+                                    {1},
+                                    {0, 0, 2, 4, 4, 4, 6, 8, 8, 8, 10, 12},
+                                    "${BACKEND_NAME}");
+
+    test_dequantize<int32_t, float>(s4x3,
+                                    scale_offset_shape,
+                                    element::i32,
+                                    element::f32,
+                                    quantization_axes,
+                                    {1, 1, 2, 3, 3, 3, 4, 5, 5, 5, 6, 7},
+                                    {2},
+                                    {1},
+                                    {0, 0, 2, 4, 4, 4, 6, 8, 8, 8, 10, 12},
+                                    "${BACKEND_NAME}");
+
+    test_dequantize<int32_t, double>(s4x3,
+                                     scale_offset_shape,
+                                     element::i32,
+                                     element::f64,
+                                     quantization_axes,
+                                     {1, 1, 2, 3, 3, 3, 4, 5, 5, 5, 6, 7},
+                                     {2},
+                                     {1},
+                                     {0, 0, 2, 4, 4, 4, 6, 8, 8, 8, 10, 12},
+                                     "${BACKEND_NAME}");
+}
+
+NGRAPH_TEST(${BACKEND_NAME}, quantize_zero_offset)
+{
+    Shape s4x3{4, 3};
+    Shape scale_offset_shape;
+    AxisSet quantization_axes;
+    op::Quantize::RoundMode round_mode = op::Quantize::RoundMode::ROUND_NEAREST_TOWARD_EVEN;
+
+    // input            0  1  2  3  4  5  6  7  8  9 10 11
+    // divide by scale  2  2  2  2  2  2  2  2  2  2  2  2
+    // equals (rounded) 0  0  1  2  2  2  3  4  4  4  5  6
+    // plus offset      0  0  0  0  0  0  0  0  0  0  0  0
+    // output           0  0  1  2  2  2  3  4  4  4  5  6
+
+    test_quantize<float, uint8_t>(s4x3,
+                                  scale_offset_shape,
+                                  element::f32,
+                                  element::u8,
+                                  quantization_axes,
+                                  round_mode,
+                                  {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
+                                  {2},
+                                  {0},
+                                  {0, 0, 1, 2, 2, 2, 3, 4, 4, 4, 5, 6},
+                                  "${BACKEND_NAME}");
+
+    test_quantize<double, uint8_t>(s4x3,
+                                   scale_offset_shape,
+                                   element::f64,
+                                   element::u8,
+                                   quantization_axes,
+                                   round_mode,
+                                   {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
+                                   {2},
+                                   {0},
+                                   {0, 0, 1, 2, 2, 2, 3, 4, 4, 4, 5, 6},
+                                   "${BACKEND_NAME}");
+
+    test_quantize<float, int8_t>(s4x3,
+                                 scale_offset_shape,
+                                 element::f32,
+                                 element::i8,
+                                 quantization_axes,
+                                 round_mode,
+                                 {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
+                                 {2},
+                                 {0},
+                                 {0, 0, 1, 2, 2, 2, 3, 4, 4, 4, 5, 6},
+                                 "${BACKEND_NAME}");
+
+    test_quantize<double, int8_t>(s4x3,
+                                  scale_offset_shape,
+                                  element::f64,
+                                  element::i8,
+                                  quantization_axes,
+                                  round_mode,
+                                  {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
+                                  {2},
+                                  {0},
+                                  {0, 0, 1, 2, 2, 2, 3, 4, 4, 4, 5, 6},
+                                  "${BACKEND_NAME}");
+
+    test_quantize<float, int32_t>(s4x3,
+                                  scale_offset_shape,
+                                  element::f32,
+                                  element::i32,
+                                  quantization_axes,
+                                  round_mode,
+                                  {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
+                                  {2},
+                                  {0},
+                                  {0, 0, 1, 2, 2, 2, 3, 4, 4, 4, 5, 6},
+                                  "${BACKEND_NAME}");
+
+    test_quantize<double, int32_t>(s4x3,
+                                   scale_offset_shape,
+                                   element::f64,
+                                   element::i32,
+                                   quantization_axes,
+                                   round_mode,
+                                   {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
+                                   {2},
+                                   {0},
+                                   {0, 0, 1, 2, 2, 2, 3, 4, 4, 4, 5, 6},
+                                   "${BACKEND_NAME}");
+>>>>>>> Stashed changes
 }
 
 NGRAPH_TEST(${BACKEND_NAME}, dequantize_zero_offset)
 {
-    Shape input_shape{4, 3};
+    Shape s4x3{4, 3};
     Shape scale_offset_shape;
     AxisSet quantization_axes;
 
+<<<<<<< Updated upstream
     auto input_type = element::u8;
     auto output_type = element::f32;
 
@@ -4992,11 +5217,84 @@ NGRAPH_TEST(${BACKEND_NAME}, dequantize_zero_offset)
     backend->call_with_validate(f, {y}, {x});
     EXPECT_EQ((vector<output_c_type>{2, 4, 4, 6, 6, 8, 8, 10, 10, 12, 12, 14}),
               read_vector<output_c_type>(y));
+=======
+    // input               0  0  1  2  2  2  3  4  4  4  5  6
+    // minus offset        0  0  0  0  0  0  0  0  0  0  0  0
+    // eqauls              0  0  1  2  2  2  3  4  4  4  5  6
+    // multiplied by scale 2  2  2  2  2  2  2  2  2  2  2  2
+    // output              0  0  2  4  4  4  6  8  8  8 10 12
+
+    test_dequantize<uint8_t, float>(s4x3,
+                                    scale_offset_shape,
+                                    element::u8,
+                                    element::f32,
+                                    quantization_axes,
+                                    {0, 0, 1, 2, 2, 2, 3, 4, 4, 4, 5, 6},
+                                    {2},
+                                    {0},
+                                    {0, 0, 2, 4, 4, 4, 6, 8, 8, 8, 10, 12},
+                                    "${BACKEND_NAME}");
+
+    test_dequantize<uint8_t, double>(s4x3,
+                                     scale_offset_shape,
+                                     element::u8,
+                                     element::f64,
+                                     quantization_axes,
+                                     {0, 0, 1, 2, 2, 2, 3, 4, 4, 4, 5, 6},
+                                     {2},
+                                     {0},
+                                     {0, 0, 2, 4, 4, 4, 6, 8, 8, 8, 10, 12},
+                                     "${BACKEND_NAME}");
+
+    test_dequantize<int8_t, float>(s4x3,
+                                   scale_offset_shape,
+                                   element::i8,
+                                   element::f32,
+                                   quantization_axes,
+                                   {0, 0, 1, 2, 2, 2, 3, 4, 4, 4, 5, 6},
+                                   {2},
+                                   {0},
+                                   {0, 0, 2, 4, 4, 4, 6, 8, 8, 8, 10, 12},
+                                   "${BACKEND_NAME}");
+
+    test_dequantize<int8_t, double>(s4x3,
+                                    scale_offset_shape,
+                                    element::i8,
+                                    element::f64,
+                                    quantization_axes,
+                                    {0, 0, 1, 2, 2, 2, 3, 4, 4, 4, 5, 6},
+                                    {2},
+                                    {0},
+                                    {0, 0, 2, 4, 4, 4, 6, 8, 8, 8, 10, 12},
+                                    "${BACKEND_NAME}");
+
+    test_dequantize<int32_t, float>(s4x3,
+                                    scale_offset_shape,
+                                    element::i32,
+                                    element::f32,
+                                    quantization_axes,
+                                    {0, 0, 1, 2, 2, 2, 3, 4, 4, 4, 5, 6},
+                                    {2},
+                                    {0},
+                                    {0, 0, 2, 4, 4, 4, 6, 8, 8, 8, 10, 12},
+                                    "${BACKEND_NAME}");
+
+    test_dequantize<int32_t, double>(s4x3,
+                                     scale_offset_shape,
+                                     element::i32,
+                                     element::f64,
+                                     quantization_axes,
+                                     {0, 0, 1, 2, 2, 2, 3, 4, 4, 4, 5, 6},
+                                     {2},
+                                     {0},
+                                     {0, 0, 2, 4, 4, 4, 6, 8, 8, 8, 10, 12},
+                                     "${BACKEND_NAME}");
+>>>>>>> Stashed changes
 }
 
 NGRAPH_TEST(${BACKEND_NAME}, quantize_axes)
 {
-    Shape input_shape{4, 3};
+    Shape s4x3{4, 3};
     Shape scale_offset_shape{4};
     AxisSet quantization_axes{0};
 
@@ -5008,7 +5306,7 @@ NGRAPH_TEST(${BACKEND_NAME}, quantize_axes)
 
     op::Quantize::RoundMode round_mode = op::Quantize::RoundMode::ROUND_NEAREST_TOWARD_INFINITY;
 
-    auto X = make_shared<op::Parameter>(input_type, input_shape);
+    auto X = make_shared<op::Parameter>(input_type, s4x3);
     auto scale = op::Constant::create(input_type, scale_offset_shape, {2, 3, 4, 5});
     auto offset = op::Constant::create(output_type, scale_offset_shape, {10, 20, 30, 40});
     auto quantize =
@@ -5016,8 +5314,8 @@ NGRAPH_TEST(${BACKEND_NAME}, quantize_axes)
     auto f = make_shared<Function>(quantize, op::ParameterVector{X});
 
     auto backend = runtime::Backend::create("${BACKEND_NAME}");
-    auto x = backend->create_tensor(input_type, input_shape);
-    auto y = backend->create_tensor(output_type, input_shape);
+    auto x = backend->create_tensor(input_type, s4x3);
+    auto y = backend->create_tensor(output_type, s4x3);
 
     copy_data(x, vector<input_c_type>{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11});
     // divided by scale               2  2  2  3  3  3  4  4  4  5  5   5
@@ -5032,7 +5330,7 @@ NGRAPH_TEST(${BACKEND_NAME}, quantize_axes)
 
 NGRAPH_TEST(${BACKEND_NAME}, dequantize_axes)
 {
-    Shape input_shape{4, 3};
+    Shape s4x3{4, 3};
     Shape scale_offset_shape{4};
     AxisSet quantization_axes{0};
 
@@ -5042,15 +5340,15 @@ NGRAPH_TEST(${BACKEND_NAME}, dequantize_axes)
     typedef uint8_t input_c_type;
     typedef float output_c_type;
 
-    auto X = make_shared<op::Parameter>(input_type, input_shape);
+    auto X = make_shared<op::Parameter>(input_type, s4x3);
     auto scale = op::Constant::create(output_type, scale_offset_shape, {2, 3, 4, 5});
     auto offset = op::Constant::create(input_type, scale_offset_shape, {10, 20, 30, 40});
     auto dequantize = make_shared<op::Dequantize>(X, scale, offset, output_type, quantization_axes);
     auto f = make_shared<Function>(dequantize, op::ParameterVector{X});
 
     auto backend = runtime::Backend::create("${BACKEND_NAME}");
-    auto x = backend->create_tensor(input_type, input_shape);
-    auto y = backend->create_tensor(output_type, input_shape);
+    auto x = backend->create_tensor(input_type, s4x3);
+    auto y = backend->create_tensor(output_type, s4x3);
 
     copy_data(x, vector<input_c_type>{10, 11, 11, 21, 21, 22, 32, 32, 32, 42, 42, 42});
     // minus offset                   10  10  10  20  20  20  30  30  30  40  40  40
@@ -5063,6 +5361,7 @@ NGRAPH_TEST(${BACKEND_NAME}, dequantize_axes)
               read_vector<output_c_type>(y));
 }
 
+<<<<<<< Updated upstream
 NGRAPH_TEST(${BACKEND_NAME}, quantize_int8)
 {
     Shape input_shape{4, 3};
@@ -5130,10 +5429,249 @@ NGRAPH_TEST(${BACKEND_NAME}, dequantize_int8)
     backend->call_with_validate(f, {y}, {x});
     EXPECT_EQ((vector<output_c_type>{0, -2, 2, -4, 4, -6, 6, -8, 8, -10, 10, -12}),
               read_vector<output_c_type>(y));
+=======
+NGRAPH_TEST(${BACKEND_NAME}, quantize_signed)
+{
+    Shape s4x3{4, 3};
+    Shape scale_offset_shape;
+    AxisSet quantization_axes;
+    op::Quantize::RoundMode round_mode = op::Quantize::RoundMode::ROUND_NEAREST_TOWARD_EVEN;
+
+    // input            0 -1  2 -3  4 -5  6 -7  8 -9 10 -11
+    // divide by scale  2  2  2  2  2  2  2  2  2  2  2   2
+    // equals (rounded) 0  0  1 -2  2 -2  3 -4  4 -4  5  -6
+    // plus offset      1  1  1  1  1  1  1  1  1  1  1   1
+    // output           1  1  2 -1  3 -1  4 -3  5 -3  6  -5
+
+    test_quantize<float, int8_t>(s4x3,
+                                 scale_offset_shape,
+                                 element::f32,
+                                 element::i8,
+                                 quantization_axes,
+                                 round_mode,
+                                 {0, -1, 2, -3, 4, -5, 6, -7, 8, -9, 10, -11},
+                                 {2},
+                                 {1},
+                                 {1, 1, 2, -1, 3, -1, 4, -3, 5, -3, 6, -5},
+                                 "${BACKEND_NAME}");
+
+    test_quantize<double, int8_t>(s4x3,
+                                  scale_offset_shape,
+                                  element::f64,
+                                  element::i8,
+                                  quantization_axes,
+                                  round_mode,
+                                  {0, -1, 2, -3, 4, -5, 6, -7, 8, -9, 10, -11},
+                                  {2},
+                                  {1},
+                                  {1, 1, 2, -1, 3, -1, 4, -3, 5, -3, 6, -5},
+                                  "${BACKEND_NAME}");
+
+    test_quantize<float, int32_t>(s4x3,
+                                  scale_offset_shape,
+                                  element::f32,
+                                  element::i32,
+                                  quantization_axes,
+                                  round_mode,
+                                  {0, -1, 2, -3, 4, -5, 6, -7, 8, -9, 10, -11},
+                                  {2},
+                                  {1},
+                                  {1, 1, 2, -1, 3, -1, 4, -3, 5, -3, 6, -5},
+                                  "${BACKEND_NAME}");
+
+    test_quantize<double, int32_t>(s4x3,
+                                   scale_offset_shape,
+                                   element::f64,
+                                   element::i32,
+                                   quantization_axes,
+                                   round_mode,
+                                   {0, -1, 2, -3, 4, -5, 6, -7, 8, -9, 10, -11},
+                                   {2},
+                                   {1},
+                                   {1, 1, 2, -1, 3, -1, 4, -3, 5, -3, 6, -5},
+                                   "${BACKEND_NAME}");
+}
+
+NGRAPH_TEST(${BACKEND_NAME}, dequantize_signed)
+{
+    Shape s4x3{4, 3};
+    Shape scale_offset_shape;
+    AxisSet quantization_axes;
+
+    // input               1  1  2 -1  3 -1  4 -3  5 -3  6  -5
+    // minus offset        1  1  1  1  1  1  1  1  1  1  1   1
+    // eqauls              0  0  1 -2  2 -2  3 -4  4 -4  5  -6
+    // multiplied by scale 2  2  2  2  2  2  2  2  2  2  2   2
+    // output              0  0  2 -4  4 -4  6 -8  8 -8 10 -12
+
+    test_dequantize<int8_t, float>(s4x3,
+                                   scale_offset_shape,
+                                   element::i8,
+                                   element::f32,
+                                   quantization_axes,
+                                   {1, 1, 2, -1, 3, -1, 4, -3, 5, -3, 6, -5},
+                                   {2},
+                                   {1},
+                                   {0, 0, 2, -4, 4, -4, 6, -8, 8, -8, 10, -12},
+                                   "${BACKEND_NAME}");
+
+    test_dequantize<int8_t, double>(s4x3,
+                                    scale_offset_shape,
+                                    element::i8,
+                                    element::f64,
+                                    quantization_axes,
+                                    {1, 1, 2, -1, 3, -1, 4, -3, 5, -3, 6, -5},
+                                    {2},
+                                    {1},
+                                    {0, 0, 2, -4, 4, -4, 6, -8, 8, -8, 10, -12},
+                                    "${BACKEND_NAME}");
+
+    test_dequantize<int32_t, float>(s4x3,
+                                    scale_offset_shape,
+                                    element::i32,
+                                    element::f32,
+                                    quantization_axes,
+                                    {1, 1, 2, -1, 3, -1, 4, -3, 5, -3, 6, -5},
+                                    {2},
+                                    {1},
+                                    {0, 0, 2, -4, 4, -4, 6, -8, 8, -8, 10, -12},
+                                    "${BACKEND_NAME}");
+
+    test_dequantize<int32_t, double>(s4x3,
+                                     scale_offset_shape,
+                                     element::i32,
+                                     element::f64,
+                                     quantization_axes,
+                                     {1, 1, 2, -1, 3, -1, 4, -3, 5, -3, 6, -5},
+                                     {2},
+                                     {1},
+                                     {0, 0, 2, -4, 4, -4, 6, -8, 8, -8, 10, -12},
+                                     "${BACKEND_NAME}");
+}
+
+NGRAPH_TEST(${BACKEND_NAME}, quantize_signed_zero_offset)
+{
+    Shape s4x3{4, 3};
+    Shape scale_offset_shape;
+    AxisSet quantization_axes;
+    op::Quantize::RoundMode round_mode = op::Quantize::RoundMode::ROUND_NEAREST_TOWARD_EVEN;
+
+    // input            0 -1  2 -3  4 -5  6 -7  8 -9 10 -11
+    // divide by scale  2  2  2  2  2  2  2  2  2  2  2   2
+    // equals (rounded) 0  0  1 -2  2 -2  3 -4  4 -4  5  -6
+    // plus offset      0  0  0  0  0  0  0  0  0  0  0   0
+    // equals           0  0  1 -2  2 -2  3 -4  4 -4  5  -6
+
+    test_quantize<float, int8_t>(s4x3,
+                                 scale_offset_shape,
+                                 element::f32,
+                                 element::i8,
+                                 quantization_axes,
+                                 round_mode,
+                                 {0, -1, 2, -3, 4, -5, 6, -7, 8, -9, 10, -11},
+                                 {2},
+                                 {0},
+                                 {0, 0, 1, -2, 2, -2, 3, -4, 4, -4, 5, -6},
+                                 "${BACKEND_NAME}");
+
+    test_quantize<double, int8_t>(s4x3,
+                                  scale_offset_shape,
+                                  element::f64,
+                                  element::i8,
+                                  quantization_axes,
+                                  round_mode,
+                                  {0, -1, 2, -3, 4, -5, 6, -7, 8, -9, 10, -11},
+                                  {2},
+                                  {0},
+                                  {0, 0, 1, -2, 2, -2, 3, -4, 4, -4, 5, -6},
+                                  "${BACKEND_NAME}");
+
+    test_quantize<float, int32_t>(s4x3,
+                                  scale_offset_shape,
+                                  element::f32,
+                                  element::i32,
+                                  quantization_axes,
+                                  round_mode,
+                                  {0, -1, 2, -3, 4, -5, 6, -7, 8, -9, 10, -11},
+                                  {2},
+                                  {0},
+                                  {0, 0, 1, -2, 2, -2, 3, -4, 4, -4, 5, -6},
+                                  "${BACKEND_NAME}");
+
+    test_quantize<double, int32_t>(s4x3,
+                                   scale_offset_shape,
+                                   element::f64,
+                                   element::i32,
+                                   quantization_axes,
+                                   round_mode,
+                                   {0, -1, 2, -3, 4, -5, 6, -7, 8, -9, 10, -11},
+                                   {2},
+                                   {0},
+                                   {0, 0, 1, -2, 2, -2, 3, -4, 4, -4, 5, -6},
+                                   "${BACKEND_NAME}");
+}
+
+NGRAPH_TEST(${BACKEND_NAME}, dequantize_signed_zero_offset)
+{
+    Shape s4x3{4, 3};
+    Shape scale_offset_shape;
+    AxisSet quantization_axes;
+
+    // input               0  0  1 -2  2 -2  3 -4  4 -4  5  -6
+    // minus offset        0  0  0  0  0  0  0  0  0  0  0   0
+    // eqauls              0  0  1 -2  2 -2  3 -4  4 -4  5  -6
+    // multiplied by scale 2  2  2  2  2  2  2  2  2  2  2   2
+    // output              0  0  2 -4  4 -4  6 -8  8 -8 10 -12
+
+    test_dequantize<int8_t, float>(s4x3,
+                                   scale_offset_shape,
+                                   element::i8,
+                                   element::f32,
+                                   quantization_axes,
+                                   {0, 0, 1, -2, 2, -2, 3, -4, 4, -4, 5, -6},
+                                   {2},
+                                   {0},
+                                   {0, 0, 2, -4, 4, -4, 6, -8, 8, -8, 10, -12},
+                                   "${BACKEND_NAME}");
+
+    test_dequantize<int8_t, double>(s4x3,
+                                    scale_offset_shape,
+                                    element::i8,
+                                    element::f64,
+                                    quantization_axes,
+                                    {0, 0, 1, -2, 2, -2, 3, -4, 4, -4, 5, -6},
+                                    {2},
+                                    {0},
+                                    {0, 0, 2, -4, 4, -4, 6, -8, 8, -8, 10, -12},
+                                    "${BACKEND_NAME}");
+
+    test_dequantize<int32_t, float>(s4x3,
+                                    scale_offset_shape,
+                                    element::i32,
+                                    element::f32,
+                                    quantization_axes,
+                                    {0, 0, 1, -2, 2, -2, 3, -4, 4, -4, 5, -6},
+                                    {2},
+                                    {0},
+                                    {0, 0, 2, -4, 4, -4, 6, -8, 8, -8, 10, -12},
+                                    "${BACKEND_NAME}");
+
+    test_dequantize<int32_t, double>(s4x3,
+                                     scale_offset_shape,
+                                     element::i32,
+                                     element::f64,
+                                     quantization_axes,
+                                     {0, 0, 1, -2, 2, -2, 3, -4, 4, -4, 5, -6},
+                                     {2},
+                                     {0},
+                                     {0, 0, 2, -4, 4, -4, 6, -8, 8, -8, 10, -12},
+                                     "${BACKEND_NAME}");
+>>>>>>> Stashed changes
 }
 
 NGRAPH_TEST(${BACKEND_NAME}, quantize_clamp)
 {
+<<<<<<< Updated upstream
     Shape input_shape{4, 3};
     Shape scale_offset_shape;
     AxisSet quantization_axes;
@@ -5163,11 +5701,103 @@ NGRAPH_TEST(${BACKEND_NAME}, quantize_clamp)
     EXPECT_EQ(
         (vector<output_c_type>{1, -128, 127, -128, 127, -128, 127, -128, 127, -128, 127, -128}),
         read_vector<output_c_type>(y));
+=======
+    Shape s4x3{4, 3};
+    Shape scale_offset_shape;
+    AxisSet quantization_axes;
+    op::Quantize::RoundMode round_mode = op::Quantize::RoundMode::ROUND_NEAREST_TOWARD_EVEN;
+
+    auto u8max = std::numeric_limits<uint8_t>::max();
+
+    test_quantize<float, uint8_t>(
+        s4x3,
+        scale_offset_shape,
+        element::f32,
+        element::u8,
+        quantization_axes,
+        round_mode,
+        {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
+        {1.0 / (u8max + 1.0)},
+        {0},
+        {0, u8max, u8max, u8max, u8max, u8max, u8max, u8max, u8max, u8max, u8max, u8max},
+        "${BACKEND_NAME}");
+
+    test_quantize<double, uint8_t>(
+        s4x3,
+        scale_offset_shape,
+        element::f64,
+        element::u8,
+        quantization_axes,
+        round_mode,
+        {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
+        {1.0 / (u8max + 1.0)},
+        {0},
+        {0, u8max, u8max, u8max, u8max, u8max, u8max, u8max, u8max, u8max, u8max, u8max},
+        "${BACKEND_NAME}");
+
+    auto i8min = std::numeric_limits<int8_t>::min();
+    auto i8max = std::numeric_limits<int8_t>::max();
+
+    test_quantize<float, int8_t>(
+        s4x3,
+        scale_offset_shape,
+        element::f32,
+        element::i8,
+        quantization_axes,
+        round_mode,
+        {0, -1, 2, -3, 4, -5, 6, -7, 8, -9, 10, -11},
+        {1.0 / (i8max + 1.0)},
+        {0},
+        {0, i8min, i8max, i8min, i8max, i8min, i8max, i8min, i8max, i8min, i8max, i8min},
+        "${BACKEND_NAME}");
+
+    test_quantize<double, int8_t>(
+        s4x3,
+        scale_offset_shape,
+        element::f64,
+        element::i8,
+        quantization_axes,
+        round_mode,
+        {0, -1, 2, -3, 4, -5, 6, -7, 8, -9, 10, -11},
+        {1.0 / (i8max + 1.0)},
+        {0},
+        {0, i8min, i8max, i8min, i8max, i8min, i8max, i8min, i8max, i8min, i8max, i8min},
+        "${BACKEND_NAME}");
+
+    auto i32min = std::numeric_limits<int32_t>::min();
+    auto i32max = std::numeric_limits<int32_t>::max();
+
+    test_quantize<float, int32_t>(
+        s4x3,
+        scale_offset_shape,
+        element::f32,
+        element::i32,
+        quantization_axes,
+        round_mode,
+        {0, -1, 2, -3, 4, -5, 6, -7, 8, -9, 10, -11},
+        {1.0 / (i32max + 1.0)},
+        {0},
+        {0, i32min, i32max, i32min, i32max, i32min, i32max, i32min, i32max, i32min, i32max, i32min},
+        "${BACKEND_NAME}");
+
+    test_quantize<double, int32_t>(
+        s4x3,
+        scale_offset_shape,
+        element::f64,
+        element::i32,
+        quantization_axes,
+        round_mode,
+        {0, -1, 2, -3, 4, -5, 6, -7, 8, -9, 10, -11},
+        {1.0 / (i32max + 1.0)},
+        {0},
+        {0, i32min, i32max, i32min, i32max, i32min, i32max, i32min, i32max, i32min, i32max, i32min},
+        "${BACKEND_NAME}");
+>>>>>>> Stashed changes
 }
 
 NGRAPH_TEST(${BACKEND_NAME}, quantize_ROUND_NEAREST_TOWARD_ZERO)
 {
-    Shape input_shape{4, 3};
+    Shape s4x3{4, 3};
     Shape scale_offset_shape;
     AxisSet quantization_axes;
 
@@ -5179,7 +5809,7 @@ NGRAPH_TEST(${BACKEND_NAME}, quantize_ROUND_NEAREST_TOWARD_ZERO)
 
     op::Quantize::RoundMode round_mode = op::Quantize::RoundMode::ROUND_NEAREST_TOWARD_ZERO;
 
-    auto X = make_shared<op::Parameter>(input_type, input_shape);
+    auto X = make_shared<op::Parameter>(input_type, s4x3);
     auto scale = op::Constant::create(input_type, scale_offset_shape, {4});
     auto offset = op::Constant::create(output_type, scale_offset_shape, {0});
     auto quantize =
@@ -5187,8 +5817,8 @@ NGRAPH_TEST(${BACKEND_NAME}, quantize_ROUND_NEAREST_TOWARD_ZERO)
     auto f = make_shared<Function>(quantize, op::ParameterVector{X});
 
     auto backend = runtime::Backend::create("${BACKEND_NAME}");
-    auto x = backend->create_tensor(input_type, input_shape);
-    auto y = backend->create_tensor(output_type, input_shape);
+    auto x = backend->create_tensor(input_type, s4x3);
+    auto y = backend->create_tensor(output_type, s4x3);
 
     copy_data(x, vector<input_c_type>{9, 10, 11, -9, -10, -11, 13, 14, 15, -13, -14, -15});
     // divide by scale                4   4   4   4    4    4   4   4   4    4    4    4
@@ -5199,9 +5829,46 @@ NGRAPH_TEST(${BACKEND_NAME}, quantize_ROUND_NEAREST_TOWARD_ZERO)
               read_vector<output_c_type>(y));
 }
 
+<<<<<<< Updated upstream
+=======
+NGRAPH_TEST(${BACKEND_NAME}, quantize_ROUND_NEAREST_TOWARD_INFINITY)
+{
+    Shape s4x3{4, 3};
+    Shape scale_offset_shape;
+    AxisSet quantization_axes;
+
+    auto input_type = element::f32;
+    auto output_type = element::i8;
+
+    typedef float input_c_type;
+    typedef int8_t output_c_type;
+
+    op::Quantize::RoundMode round_mode = op::Quantize::RoundMode::ROUND_NEAREST_TOWARD_INFINITY;
+
+    auto X = make_shared<op::Parameter>(input_type, s4x3);
+    auto scale = op::Constant::create(input_type, scale_offset_shape, {4});
+    auto offset = op::Constant::create(output_type, scale_offset_shape, {0});
+    auto quantize =
+        make_shared<op::Quantize>(X, scale, offset, output_type, quantization_axes, round_mode);
+    auto f = make_shared<Function>(quantize, op::ParameterVector{X});
+
+    auto backend = runtime::Backend::create("${BACKEND_NAME}");
+    auto x = backend->create_tensor(input_type, s4x3);
+    auto y = backend->create_tensor(output_type, s4x3);
+
+    copy_data(x, vector<input_c_type>{9, 10, 11, -9, -10, -11, 13, 14, 15, -13, -14, -15});
+    // divide by scale                4   4   4   4    4    4   4   4   4    4    4    4
+    // equals (rounded)               2   3   3  -2   -3   -3   3   4   4   -3   -4   -4
+
+    backend->call_with_validate(f, {y}, {x});
+    EXPECT_EQ((vector<output_c_type>{2, 3, 3, -2, -3, -3, 3, 4, 4, -3, -4, -4}),
+              read_vector<output_c_type>(y));
+}
+
+>>>>>>> Stashed changes
 NGRAPH_TEST(${BACKEND_NAME}, quantize_ROUND_NEAREST_UPWARD)
 {
-    Shape input_shape{4, 3};
+    Shape s4x3{4, 3};
     Shape scale_offset_shape;
     AxisSet quantization_axes;
 
@@ -5213,7 +5880,7 @@ NGRAPH_TEST(${BACKEND_NAME}, quantize_ROUND_NEAREST_UPWARD)
 
     op::Quantize::RoundMode round_mode = op::Quantize::RoundMode::ROUND_NEAREST_UPWARD;
 
-    auto X = make_shared<op::Parameter>(input_type, input_shape);
+    auto X = make_shared<op::Parameter>(input_type, s4x3);
     auto scale = op::Constant::create(input_type, scale_offset_shape, {4});
     auto offset = op::Constant::create(output_type, scale_offset_shape, {0});
     auto quantize =
@@ -5221,8 +5888,8 @@ NGRAPH_TEST(${BACKEND_NAME}, quantize_ROUND_NEAREST_UPWARD)
     auto f = make_shared<Function>(quantize, op::ParameterVector{X});
 
     auto backend = runtime::Backend::create("${BACKEND_NAME}");
-    auto x = backend->create_tensor(input_type, input_shape);
-    auto y = backend->create_tensor(output_type, input_shape);
+    auto x = backend->create_tensor(input_type, s4x3);
+    auto y = backend->create_tensor(output_type, s4x3);
 
     copy_data(x, vector<input_c_type>{9, 10, 11, -9, -10, -11, 13, 14, 15, -13, -14, -15});
     // divide by scale                4   4   4   4    4    4   4   4   4    4    4    4
@@ -5235,7 +5902,7 @@ NGRAPH_TEST(${BACKEND_NAME}, quantize_ROUND_NEAREST_UPWARD)
 
 NGRAPH_TEST(${BACKEND_NAME}, quantize_ROUND_NEAREST_DOWNWARD)
 {
-    Shape input_shape{4, 3};
+    Shape s4x3{4, 3};
     Shape scale_offset_shape;
     AxisSet quantization_axes;
 
@@ -5247,7 +5914,7 @@ NGRAPH_TEST(${BACKEND_NAME}, quantize_ROUND_NEAREST_DOWNWARD)
 
     op::Quantize::RoundMode round_mode = op::Quantize::RoundMode::ROUND_NEAREST_DOWNWARD;
 
-    auto X = make_shared<op::Parameter>(input_type, input_shape);
+    auto X = make_shared<op::Parameter>(input_type, s4x3);
     auto scale = op::Constant::create(input_type, scale_offset_shape, {4});
     auto offset = op::Constant::create(output_type, scale_offset_shape, {0});
     auto quantize =
@@ -5255,8 +5922,8 @@ NGRAPH_TEST(${BACKEND_NAME}, quantize_ROUND_NEAREST_DOWNWARD)
     auto f = make_shared<Function>(quantize, op::ParameterVector{X});
 
     auto backend = runtime::Backend::create("${BACKEND_NAME}");
-    auto x = backend->create_tensor(input_type, input_shape);
-    auto y = backend->create_tensor(output_type, input_shape);
+    auto x = backend->create_tensor(input_type, s4x3);
+    auto y = backend->create_tensor(output_type, s4x3);
 
     copy_data(x, vector<input_c_type>{9, 10, 11, -9, -10, -11, 13, 14, 15, -13, -14, -15});
     // divide by scale                4   4   4   4    4    4   4   4   4    4    4    4
@@ -5269,7 +5936,7 @@ NGRAPH_TEST(${BACKEND_NAME}, quantize_ROUND_NEAREST_DOWNWARD)
 
 NGRAPH_TEST(${BACKEND_NAME}, quantize_ROUND_NEAREST_TOWARD_EVEN)
 {
-    Shape input_shape{4, 3};
+    Shape s4x3{4, 3};
     Shape scale_offset_shape;
     AxisSet quantization_axes;
 
@@ -5281,7 +5948,7 @@ NGRAPH_TEST(${BACKEND_NAME}, quantize_ROUND_NEAREST_TOWARD_EVEN)
 
     op::Quantize::RoundMode round_mode = op::Quantize::RoundMode::ROUND_NEAREST_TOWARD_EVEN;
 
-    auto X = make_shared<op::Parameter>(input_type, input_shape);
+    auto X = make_shared<op::Parameter>(input_type, s4x3);
     auto scale = op::Constant::create(input_type, scale_offset_shape, {4});
     auto offset = op::Constant::create(output_type, scale_offset_shape, {0});
     auto quantize =
@@ -5289,8 +5956,8 @@ NGRAPH_TEST(${BACKEND_NAME}, quantize_ROUND_NEAREST_TOWARD_EVEN)
     auto f = make_shared<Function>(quantize, op::ParameterVector{X});
 
     auto backend = runtime::Backend::create("${BACKEND_NAME}");
-    auto x = backend->create_tensor(input_type, input_shape);
-    auto y = backend->create_tensor(output_type, input_shape);
+    auto x = backend->create_tensor(input_type, s4x3);
+    auto y = backend->create_tensor(output_type, s4x3);
 
     copy_data(x, vector<input_c_type>{9, 10, 11, -9, -10, -11, 13, 14, 15, -13, -14, -15});
     // divide by scale                4   4   4   4    4    4   4   4   4    4    4    4
@@ -5303,7 +5970,7 @@ NGRAPH_TEST(${BACKEND_NAME}, quantize_ROUND_NEAREST_TOWARD_EVEN)
 
 NGRAPH_TEST(${BACKEND_NAME}, quantize_ROUND_TOWARD_INFINITY)
 {
-    Shape input_shape{4, 3};
+    Shape s4x3{4, 3};
     Shape scale_offset_shape;
     AxisSet quantization_axes;
 
@@ -5315,7 +5982,7 @@ NGRAPH_TEST(${BACKEND_NAME}, quantize_ROUND_TOWARD_INFINITY)
 
     op::Quantize::RoundMode round_mode = op::Quantize::RoundMode::ROUND_TOWARD_INFINITY;
 
-    auto X = make_shared<op::Parameter>(input_type, input_shape);
+    auto X = make_shared<op::Parameter>(input_type, s4x3);
     auto scale = op::Constant::create(input_type, scale_offset_shape, {4});
     auto offset = op::Constant::create(output_type, scale_offset_shape, {0});
     auto quantize = make_shared<op::Quantize>(
@@ -5328,8 +5995,8 @@ NGRAPH_TEST(${BACKEND_NAME}, quantize_ROUND_TOWARD_INFINITY)
     auto f = make_shared<Function>(quantize, op::ParameterVector{X});
 
     auto backend = runtime::Backend::create("${BACKEND_NAME}");
-    auto x = backend->create_tensor(input_type, input_shape);
-    auto y = backend->create_tensor(output_type, input_shape);
+    auto x = backend->create_tensor(input_type, s4x3);
+    auto y = backend->create_tensor(output_type, s4x3);
 
     copy_data(x, vector<input_c_type>{9, 10, 11, -9, -10, -11, 13, 14, 15, -13, -14, -15});
     // divide by scale                4   4   4   4    4    4   4   4   4    4    4    4
@@ -5342,7 +6009,7 @@ NGRAPH_TEST(${BACKEND_NAME}, quantize_ROUND_TOWARD_INFINITY)
 
 NGRAPH_TEST(${BACKEND_NAME}, quantize_ROUND_TOWARD_ZERO)
 {
-    Shape input_shape{4, 3};
+    Shape s4x3{4, 3};
     Shape scale_offset_shape;
     AxisSet quantization_axes;
 
@@ -5354,7 +6021,7 @@ NGRAPH_TEST(${BACKEND_NAME}, quantize_ROUND_TOWARD_ZERO)
 
     op::Quantize::RoundMode round_mode = op::Quantize::RoundMode::ROUND_TOWARD_ZERO;
 
-    auto X = make_shared<op::Parameter>(input_type, input_shape);
+    auto X = make_shared<op::Parameter>(input_type, s4x3);
     auto scale = op::Constant::create(input_type, scale_offset_shape, {4});
     auto offset = op::Constant::create(output_type, scale_offset_shape, {0});
     auto quantize = make_shared<op::Quantize>(
@@ -5367,8 +6034,8 @@ NGRAPH_TEST(${BACKEND_NAME}, quantize_ROUND_TOWARD_ZERO)
     auto f = make_shared<Function>(quantize, op::ParameterVector{X});
 
     auto backend = runtime::Backend::create("${BACKEND_NAME}");
-    auto x = backend->create_tensor(input_type, input_shape);
-    auto y = backend->create_tensor(output_type, input_shape);
+    auto x = backend->create_tensor(input_type, s4x3);
+    auto y = backend->create_tensor(output_type, s4x3);
 
     copy_data(x, vector<input_c_type>{9, 10, 11, -9, -10, -11, 13, 14, 15, -13, -14, -15});
     // divide by scale                4   4   4   4    4    4   4   4   4    4    4    4
@@ -5381,7 +6048,7 @@ NGRAPH_TEST(${BACKEND_NAME}, quantize_ROUND_TOWARD_ZERO)
 
 NGRAPH_TEST(${BACKEND_NAME}, quantize_ROUND_UP)
 {
-    Shape input_shape{4, 3};
+    Shape s4x3{4, 3};
     Shape scale_offset_shape;
     AxisSet quantization_axes;
 
@@ -5393,7 +6060,7 @@ NGRAPH_TEST(${BACKEND_NAME}, quantize_ROUND_UP)
 
     op::Quantize::RoundMode round_mode = op::Quantize::RoundMode::ROUND_UP;
 
-    auto X = make_shared<op::Parameter>(input_type, input_shape);
+    auto X = make_shared<op::Parameter>(input_type, s4x3);
     auto scale = op::Constant::create(input_type, scale_offset_shape, {4});
     auto offset = op::Constant::create(output_type, scale_offset_shape, {0});
     auto quantize =
@@ -5401,8 +6068,8 @@ NGRAPH_TEST(${BACKEND_NAME}, quantize_ROUND_UP)
     auto f = make_shared<Function>(quantize, op::ParameterVector{X});
 
     auto backend = runtime::Backend::create("${BACKEND_NAME}");
-    auto x = backend->create_tensor(input_type, input_shape);
-    auto y = backend->create_tensor(output_type, input_shape);
+    auto x = backend->create_tensor(input_type, s4x3);
+    auto y = backend->create_tensor(output_type, s4x3);
 
     copy_data(x, vector<input_c_type>{9, 10, 11, -9, -10, -11, 13, 14, 15, -13, -14, -15});
     // divide by scale                4   4   4   4    4    4   4   4   4    4    4    4
@@ -5415,7 +6082,7 @@ NGRAPH_TEST(${BACKEND_NAME}, quantize_ROUND_UP)
 
 NGRAPH_TEST(${BACKEND_NAME}, quantize_ROUND_DOWN)
 {
-    Shape input_shape{4, 3};
+    Shape s4x3{4, 3};
     Shape scale_offset_shape;
     AxisSet quantization_axes;
 
@@ -5427,7 +6094,7 @@ NGRAPH_TEST(${BACKEND_NAME}, quantize_ROUND_DOWN)
 
     op::Quantize::RoundMode round_mode = op::Quantize::RoundMode::ROUND_DOWN;
 
-    auto X = make_shared<op::Parameter>(input_type, input_shape);
+    auto X = make_shared<op::Parameter>(input_type, s4x3);
     auto scale = op::Constant::create(input_type, scale_offset_shape, {4});
     auto offset = op::Constant::create(output_type, scale_offset_shape, {0});
     auto quantize =
@@ -5435,8 +6102,8 @@ NGRAPH_TEST(${BACKEND_NAME}, quantize_ROUND_DOWN)
     auto f = make_shared<Function>(quantize, op::ParameterVector{X});
 
     auto backend = runtime::Backend::create("${BACKEND_NAME}");
-    auto x = backend->create_tensor(input_type, input_shape);
-    auto y = backend->create_tensor(output_type, input_shape);
+    auto x = backend->create_tensor(input_type, s4x3);
+    auto y = backend->create_tensor(output_type, s4x3);
 
     copy_data(x, vector<input_c_type>{9, 10, 11, -9, -10, -11, 13, 14, 15, -13, -14, -15});
     // divide by scale                4   4   4   4    4    4   4   4   4    4    4    4
